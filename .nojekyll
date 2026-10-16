@@ -1,0 +1,20 @@
+echo ok
+cd /workspace && python3 - << 'PYEOF'
+import re
+html = open('index.html').read()
+css = open('css/app.css').read()
+js  = open('js/app.js').read()
+
+# 1) ids in JS must exist in HTML
+ids = set(re.findall(r"\$\('#([\w-]+)'\)", js)) | set(re.findall(r"getElementById\('([\w-]+)'\)", js))
+missing = [i for i in ids if f'id="{i}"' not in html]
+print("missing ids:", missing or "none")
+
+# 2) classes used in JS exist in CSS (rough check for key ones)
+for cls in ['pill','active','pill-del','pill-icon','reveal','shown','generating','h-item','h-thumb','show','slide-in']:
+    print(cls, '->', 'OK' if cls in css else 'MISSING')
+
+# 3) balanced braces in css
+print("css braces balanced:", css.count('{')==css.count('}'))
+PYEOF
+node --check js/app.js && node --check sw.js && echo "syntax ok"
