@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div class="app">
+ <div class="app">
 
     <header class="brand">
       <div class="brand-mark" aria-hidden="true">
@@ -25,7 +25,7 @@
         <h1 class="brand-name">EasyQR</h1>
         <p class="brand-sub">scan · share · ride</p>
       </div>
-      <button id="btn-install" class="ghost-btn install-btn" hidden title="Установить как приложение">
+      <button id="btn-install" class="ghost-btn install-btn" hidden title="Установить приложение">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
         <span>Установить</span>
       </button>
@@ -33,28 +33,30 @@
 
     <main class="layout">
 
-      <!-- ==== STAGE: Beam shell + dots orbs + views ==== -->
+      <!-- ===== ЛЕВО: ОБЛАСТЬ РЕЗУЛЬТАТА + ПУЛЬТ ===== -->
       <section class="stage-col" aria-label="Результат">
         <div class="beam-shell" id="beam-shell">
           <div class="beam beam-a" aria-hidden="true"></div>
           <div class="beam beam-b" aria-hidden="true"></div>
           <div class="card stage" id="stage">
-            <!-- фон с плавающими точками -->
-            <canvas id="dots-bg" class="dots-bg" aria-hidden="true"></canvas>
+            <!-- размытые волны-фон (исчезают при генерации) -->
+            <div class="waves" aria-hidden="true">
+              <span class="wave w1"></span>
+              <span class="wave w2"></span>
+              <span class="wave w3"></span>
+            </div>
 
             <!-- пусто -->
             <div id="view-empty" class="stage-view empty-view">
-              <div class="empty-orb" aria-hidden="true"></div>
               <p class="empty-text">QR появится здесь</p>
             </div>
 
-            <!-- думать (Thinking Orb) -->
+            <!-- орб генерации: занимает всю область QR, без кольца -->
             <div id="view-thinking" class="stage-view thinking-view" hidden>
-              <div class="orb-glow" aria-hidden="true"></div>
-              <svg class="orb-ring" viewBox="0 0 64 64" aria-hidden="true">
-                <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(210,210,210,.14)" stroke-width="1.5"/>
-                <circle cx="32" cy="32" r="28" fill="none" stroke="#E4E4E7" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="44 132"/>
-              </svg>
+              <div class="orb-field" aria-hidden="true">
+                <div class="orb-glow"></div>
+                <div class="orb-core"></div>
+              </div>
               <p class="thinking-text">GENERATING</p>
             </div>
 
@@ -73,19 +75,19 @@
           </div>
         </div>
 
-        <!-- Панель управления: пресет + ввод + действия -->
-        <section class="console card" aria-label="Управление">
+        <!-- панель управления под областью QR: пресеты + ввод -->
+        <section class="console card" aria-label="Генератор">
           <div class="presets-wrap">
-            <div id="presets" class="presets" role="tablist" aria-label="Список шаблонов"></div>
-            <button id="btn-add-preset" class="pill pill-add" title="Добавить шаблон">
+            <div id="presets" class="presets" role="tablist" aria-label="Пресеты ссылок"></div>
+            <button id="btn-add-preset" class="pill pill-add" title="Добавить пресет">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
 
           <div class="input-card">
-            <span id="prefix" class="input-prefix" title="Нажмите, чтобы изменить ссылку до =">https://wsh.bike?s=</span>
+            <span id="prefix" class="input-prefix" title="Нажмите чтобы изменить шаблон">https://wsh.bike?s=</span>
             <input id="suffix" class="input-suffix" type="text" inputmode="text" autocomplete="off" spellcheck="false"
-                   placeholder="номер" aria-label="Часть после =">
+                   placeholder="номер" aria-label="Значение после =">
           </div>
 
           <div class="actions">
@@ -97,11 +99,11 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
             </button>
           </div>
-          <div class="hint">Пиши номер после префикса и жми <kbd>Enter</kbd></div>
+          <div class="hint">Допишите номер и нажмите <kbd>Enter</kbd></div>
         </section>
       </section>
 
-      <!-- ==== HISTORY ==== -->
+      <!-- ===== ПРАВО: ИСТОРИЯ ===== -->
       <aside class="history card" aria-label="История">
         <div class="history-head">
           <h2 class="history-title">История</h2>
@@ -113,13 +115,13 @@
     </main>
   </div>
 
-  <!-- Модалка добавления/редактирования шаблона (открывается только по кнопке + или клику по префиксу) -->
+  <!-- Модалка пресета (открывается только по кнопке «+» или правкой шаблона) -->
   <div id="preset-modal" class="modal-overlay" hidden>
     <div class="modal card">
-      <h3 class="modal-title">Новый шаблон</h3>
+      <h3 class="modal-title">Новый пресет</h3>
       <label class="mini-label" for="mp-name">Название</label>
       <input id="mp-name" class="modal-input" type="text" placeholder="Whoosh" maxlength="18">
-      <label class="mini-label" for="mp-url">Базовая ссылка (заканчивается на = )</label>
+      <label class="mini-label" for="mp-url">Шаблон ссылки (заканчивается на = )</label>
       <input id="mp-url" class="modal-input mono" type="text" placeholder="https://wsh.bike?s=">
       <div class="modal-actions">
         <button id="mp-cancel" class="ghost-btn">Отмена</button>
