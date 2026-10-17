@@ -193,7 +193,7 @@ kbd{
     var(--beam-tail) 318deg,
     var(--beam-mid) 340deg,
     var(--beam-core) 352deg,
-    #F4F4F5 360deg);
+    #2b2b2b 360deg);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
           mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor;
