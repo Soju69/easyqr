@@ -1,0 +1,324 @@
+/* ============ EasyQR app logic ============ */
+(() => {
+'use strict';
+
+const $ = (s) => document.querySelector(s);
+
+/* ---------- Иконки (lucide-style, stroke) ---------- */
+const ICONS = {
+  scooter:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="M8 18h8M16.5 5l-2.6 7.2a2 2 0 0 0 1.9 2.8H19M15 5h2M8 18l3.5-7"/></svg>`,
+  bike:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM12 17.5V14l-3-3 4-3 2 3h2"/></svg>`,
+  car:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M3 17v-4l2-5a2 2 0 0 1 2-1.4h10A2 2 0 0 1 19 8l2 5v4M6.5 12h11"/><circle cx="7" cy="17" r="1.6"/><circle cx="17" cy="17" r="1.6"/></svg>`,
+  link:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.1"/><path d="M14 10a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.1"/></svg>`,
+  x:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`
+};
+
+/* ----------_known services → detection ---------- */
+const SERVICES = [
+  { key:'whoosh',   match:/whoosh|wsh\.bike/i,                    icon:'scooter', label:'WHOOSH · САМОКАТ' },
+  { key:'yandex',   match:/yandex|\.go\b|taxi|vmnitime|\byd\b|\bmr\b|rt725|t\.\d+\.ru/i, icon:'car', label:'ЯНДЕКС · ТАКСИ' },
+  { key:'utube',    match:/utube|u-tok|msk911|scooter-?sharing|whoos[\d.]*tube/i, icon:'scooter', label:'UTUBE · САМОКАТ' },
+  { key:'mtsbike',  match:/mobik|\bmts\b|moyka|moika|velobike|vkm\b/i, icon:'bike', label:'МТС · ВЕЛО/КИК' },
+  { key:'carshare', match:/youdrive|anytime|belka|dellin|carsharing|drive\d/i, icon:'car', label:'КАРШЕРИНГ' },
+];
+
+function detectService(url){
+  const u = String(url||'');
+  for (const s of SERVICES){
+    if (s.match.test(u)) return s;
+  }
+  return { key:'link', icon:'link', label:'ССЫЛКА' };
+}
+
+/* ---------- Storage ---------- */
+const LS = {
+  get(k,d){ try{ const v=localStorage.getItem('eqr.'+k); return v?JSON.parse(v):d }catch(e){return d} },
+  set(k,v){ try{ localStorage.setItem('eqr.'+k, JSON.stringify(v)) }catch(e){} }
+};
+
+let presets = LS.get('presets', null);
+if (!presets){
+  presets = [{ name:'Whoosh', url:'https://wsh.bike?s=' }];
+  LS.set('presets', presets);
+}
+let history = LS.get('history', []);
+let activePreset = LS.get('activePreset', 0);
+if (activePreset >= presets.length) activePreset = 0;
+
+/* ---------- Elements ---------- */
+const el = {
+  presets:$('#presets'), addPreset:$('#btn-add-preset'),
+  prefixLabel:$('#prefix-label'), prefix:$('#prefix'), suffix:$('#suffix'),
+  generate:$('#btn-generate'), copy:$('#btn-copy'), download:$('#btn-download'),
+  beamShell:$('#beam-shell'), stage:$('#stage'),
+  vEmpty:$('#view-empty'), vThink:$('#view-thinking'), vResult:$('#view-result'),
+  resBadge:$('#res-badge'), resTime:$('#res-time'), qrHolder:$('#qr-holder'),
+  resUrl:$('#res-url'), resType:$('#res-type'),
+  histList:$('#history-list'), histEmpty:$('#history-empty'), clearHist:$('#btn-clear-history'),
+  modal:$('#preset-modal'), mpName:$('#mp-name'), mpUrl:$('#mp-url'),
+  mpSave:$('#mp-save'), mpCancel:$('#mp-cancel'),
+  toast:$('#toast'), installBtn:$('#btn-install')
+};
+
+let current = null; // {url, svg(canvas), ts, service}
+let generating = false;
+
+/* ---------- Toast ---------- */
+let toastT;
+function toast(msg){
+  el.toast.textContent = msg;
+  el.toast.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>el.toast.classList.remove('show'), 1600);
+}
+
+/* ---------- Presets UI ---------- */
+function renderPresets(){
+  el.presets.innerHTML = '';
+  presets.forEach((p,i)=>{
+    const b = document.createElement('button');
+    b.className = 'pill' + (i===activePreset?' active':'');
+    b.setAttribute('role','tab');
+    const svc = detectService(p.url);
+    b.innerHTML = `<span class="pill-icon">${ICONS[svc.icon]}</span><span>${escapeHtml(p.name)}</span><span class="pill-del" data-del="${i}" title="Удалить пресет">${ICONS.x}</span>`;
+    b.addEventListener('click',(e)=>{
+      if (e.target.closest('.pill-del')) return;
+      activePreset = i; LS.set('activePreset', i);
+      applyPreset();
+    });
+    b.querySelector('.pill-del').addEventListener('click',(e)=>{
+      e.stopPropagation();
+      if (presets.length<=1){ toast('Нужен хотя бы один пресет'); return; }
+      presets.splice(i,1);
+      if (activePreset>=presets.length) activePreset=presets.length-1;
+      LS.set('presets',presets); LS.set('activePreset',activePreset);
+      applyPreset();
+    });
+    el.presets.appendChild(b);
+  });
+}
+
+function applyPreset(){
+  renderPresets();
+  const p = presets[activePreset];
+  el.prefix.textContent = p.url;
+  el.prefixLabel.textContent = p.name;
+  el.suffix.focus({preventScroll:true});
+}
+
+/* ---------- Modal ---------- */
+el.addPreset.addEventListener('click',()=>{
+  el.mpName.value=''; el.mpUrl.value='';
+  el.modal.hidden=false; el.mpName.focus();
+});
+el.mpCancel.addEventListener('click',()=>el.modal.hidden=true);
+el.modal.addEventListener('click',(e)=>{ if(e.target===el.modal) el.modal.hidden=true; });
+el.mpSave.addEventListener('click',savePreset);
+el.mpUrl.addEventListener('keydown',(e)=>{ if(e.key==='Enter') savePreset(); });
+function savePreset(){
+  let name = el.mpName.value.trim();
+  let url  = el.mpUrl.value.trim();
+  if (!name || !url){ toast('Заполните оба поля'); return; }
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  if (!url.endsWith('=') && !url.endsWith('?')) url += '=';
+  presets.push({name,url});
+  activePreset = presets.length-1;
+  LS.set('presets',presets); LS.set('activePreset',activePreset);
+  el.modal.hidden = true;
+  applyPreset();
+  toast('Пресет добавлен');
+}
+
+/* Tap on prefix → edit preset url inline via modal prefilled */
+el.prefix.addEventListener('click',()=>{
+  const p = presets[activePreset];
+  el.mpName.value = p.name; el.mpUrl.value = p.url;
+  el.modal.hidden = false; el.mpUrl.focus();
+  // save overwrites current preset
+  el.mpSave.onclick = ()=>{
+    let name = el.mpName.value.trim(), url = el.mpUrl.value.trim();
+    if(!name||!url){toast('Заполните оба поля');return;}
+    if(!/^https?:\/\//i.test(url)) url='https://'+url;
+    presets[activePreset]={name,url};
+    LS.set('presets',presets);
+    el.modal.hidden=true; applyPreset(); toast('Пресет обновлён');
+    el.mpSave.onclick = savePreset;
+  };
+});
+el.mpSave.onclick = savePreset;
+
+/* ---------- Generate ---------- */
+async function generate(){
+  if (generating) return;
+  const suf = el.suffix.value.trim();
+  const base = presets[activePreset].url;
+  const url = base + suf;
+  if (!suf){ toast('Введите номер'); shake(el.suffix.closest('.input-card')); return; }
+
+  generating = true;
+  el.copy.disabled = el.download.disabled = true;
+  el.beamShell.classList.add('generating');
+  showView('think');
+
+  // build QR in background while orb plays
+  let canvas=null, err=null;
+  try{
+    canvas = await QRCode.toCanvas(document.createElement('canvas'), url, {
+      width: 640, margin: 2,
+      errorCorrectionLevel: 'M',
+      color:{ dark:'#000000', light:'#ffffff' }
+    });
+  }catch(e){ err=e; }
+
+  await sleep(1000); // "thinking" beat
+
+  if (err){ showView(current?'result':'empty'); toast('Ошибка генерации'); generating=false; return; }
+
+  const svc = detectService(url);
+  const ts = Date.now();
+  current = { url, canvas, ts, svc, suf };
+
+  paintResult(current);
+  pushHistory(current);
+  showView('result');
+  el.beamShell.classList.remove('generating');
+  el.copy.disabled = el.download.disabled = false;
+  generating = false;
+  el.suffix.select();
+}
+
+function paintResult(item){
+  el.qrHolder.innerHTML='';
+  el.qrHolder.appendChild(item.canvas);
+  el.resBadge.innerHTML = `<span class="pill-icon">${ICONS[item.svc.icon]}</span>${item.svc.key.toUpperCase()}`;
+  el.resTime.textContent = fmtTime(item.ts);
+  el.resUrl.textContent = item.url;
+  el.resType.textContent = item.svc.label;
+  el.vResult.classList.add('reveal');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.vResult.classList.remove('reveal')));
+}
+
+function showView(v){
+  el.vEmpty.hidden = v!=='empty';
+  el.vThink.hidden = v!=='think';
+  el.vResult.hidden = v!=='result';
+  if (v==='result'){
+    el.vResult.classList.add('reveal');
+    requestAnimationFrame(()=>requestAnimationFrame(()=>el.vResult.classList.add('shown')));
+  } else {
+    el.vResult.classList.remove('shown');
+  }
+}
+
+/* ---------- History ---------- */
+function pushHistory(item){
+  history.unshift({
+    url:item.url, suf:item.suf, ts:item.ts, svc:item.svc.key,
+    thumb: safeThumb(item.canvas)
+  });
+  if (history.length>60) history.length=60;
+  LS.set('history',history);
+  renderHistory();
+}
+function safeThumb(canvas){
+  try{
+    const c=document.createElement('canvas'); c.width=c.height=68;
+    const ctx=c.getContext('2d'); ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(canvas,0,0,68,68);
+    return c.toDataURL('image/png');
+  }catch(e){ return null }
+}
+const SVC_BY_KEY = {};
+SERVICES.forEach(s=>SVC_BY_KEY[s.key]=s);
+
+function renderHistory(){
+  el.histList.innerHTML='';
+  el.histEmpty.style.display = history.length? 'none':'block';
+  history.forEach((h,i)=>{
+    const svc = SVC_BY_KEY[h.svc] || detectService(h.url||'');
+    const b=document.createElement('button');
+    b.className='h-item';
+    b.innerHTML = `
+      <span class="h-icon">${ICONS[svc.icon]}</span>
+      <span class="h-body">
+        <span class="h-brand">${escapeHtml(svc.key.toUpperCase())}</span>
+        <span class="h-meta">${fmtTime(h.ts)} · ${escapeHtml(h.url)}</span>
+      </span>
+      <span class="h-num">#${escapeHtml(String(h.suf||''))}</span>
+      ${h.thumb?`<span class="h-thumb"><img src="${h.thumb}" alt=""></span>`:''}`;
+    b.addEventListener('click',()=>restore(h));
+    el.histList.appendChild(b);
+  });
+}
+
+function restore(h){
+  // find or create matching preset by prefix
+  const idx = h.url.lastIndexOf('=');
+  const base = idx>=0 ? h.url.slice(0,idx+1) : h.url;
+  let pi = presets.findIndex(p=>p.url===base);
+  if (pi<0){
+    const svc = SVC_BY_KEY[h.svc]||detectService(base);
+    presets.push({name:svc.key[0].toUpperCase()+svc.key.slice(1), url:base});
+    pi = presets.length-1;
+    LS.set('presets',presets);
+  }
+  activePreset = pi; LS.set('activePreset',pi);
+  applyPreset();
+  el.suffix.value = h.suf || '';
+  current = { url:h.url, ts:h.ts, svc:SVC_BY_KEY[h.svc]||detectService(h.url), suf:h.suf, canvas:null };
+  // regenerate silently (no fake delay) to get fresh canvas
+  QRCode.toCanvas(document.createElement('canvas'), h.url, {width:640,margin:2,errorCorrectionLevel:'M',color:{dark:'#000000',light:'#ffffff'}})
+    .then(cv=>{ current.canvas=cv; paintResult(current); showView('result'); el.copy.disabled=el.download.disabled=false; })
+    .catch(()=>toast('Не удалось восстановить'));
+}
+
+el.clearHist.addEventListener('click',()=>{
+  history=[]; LS.set('history',history); renderHistory(); toast('История очищена');
+});
+
+/* ---------- Copy / Download ---------- */
+el.copy.addEventListener('click', async ()=>{
+  if(!current) return;
+  try{ await navigator.clipboard.writeText(current.url); toast('Ссылка скопирована'); }
+  catch(e){
+    const t=document.createElement('textarea'); t.value=current.url; document.body.appendChild(t);
+    t.select(); document.execCommand('copy'); t.remove(); toast('Скопировано');
+  }
+});
+el.download.addEventListener('click',()=>{
+  if(!current||!current.canvas) return;
+  const a=document.createElement('a');
+  a.download=`qr_${current.svc.key}_${current.suf||'x'}.png`;
+  a.href=current.canvas.toDataURL('image/png');
+  a.click(); toast('PNG сохранён');
+});
+
+/* ---------- Input events ---------- */
+el.suffix.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); generate(); }});
+el.generate.addEventListener('click',generate);
+
+/* ---------- Utils ---------- */
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)) }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+function fmtTime(ts){
+  const d=new Date(ts);
+  const p=n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function shake(node){
+  node.animate([{transform:'translateX(0)'},{transform:'translateX(-6px)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],{duration:220,easing:'ease-in-out'});
+}
+
+/* ---------- PWA install ---------- */
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); deferredPrompt=e; el.installBtn.hidden=false; });
+el.installBtn.addEventListener('click',async()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; el.installBtn.hidden=true;
+});
+window.addEventListener('appinstalled',()=>{ el.installBtn.hidden=true; });
+
+/* ---------- Init ---------- */
+applyPreset();
+renderHistory();
+})();
