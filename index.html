@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0C0B09">
+  <meta name="theme-color" content="#0B0B0C">
   <title>EasyQR — генератор QR</title>
-  <meta name="description" content="Быстрый генератор QR-кодов для кикшеринга. Пресеты, история, офлайн.">
+  <meta name="description" content="Быстрый генератор QR-кодов для шеринга: скутеры, каршеринг, велосипеды.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -25,7 +25,7 @@
         <h1 class="brand-name">EasyQR</h1>
         <p class="brand-sub">scan · share · ride</p>
       </div>
-      <button id="btn-install" class="ghost-btn install-btn" hidden title="Установить приложение">
+      <button id="btn-install" class="ghost-btn install-btn" hidden title="Установить как приложение">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
         <span>Установить</span>
       </button>
@@ -33,13 +33,13 @@
 
     <main class="layout">
 
-      <!-- ===== ЛЕВО: ОБЛАСТЬ РЕЗУЛЬТАТА + ПУЛЬТ ===== -->
+      <!-- ==== STAGE: Beam shell + dots orbs + views ==== -->
       <section class="stage-col" aria-label="Результат">
         <div class="beam-shell" id="beam-shell">
           <div class="beam beam-a" aria-hidden="true"></div>
           <div class="beam beam-b" aria-hidden="true"></div>
           <div class="card stage" id="stage">
-            <!-- фон из плавающих точек -->
+            <!-- фон с плавающими точками -->
             <canvas id="dots-bg" class="dots-bg" aria-hidden="true"></canvas>
 
             <!-- пусто -->
@@ -48,12 +48,12 @@
               <p class="empty-text">QR появится здесь</p>
             </div>
 
-            <!-- орб генерации -->
+            <!-- думать (Thinking Orb) -->
             <div id="view-thinking" class="stage-view thinking-view" hidden>
               <div class="orb-glow" aria-hidden="true"></div>
               <svg class="orb-ring" viewBox="0 0 64 64" aria-hidden="true">
-                <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,214,160,.14)" stroke-width="1.5"/>
-                <circle cx="32" cy="32" r="28" fill="none" stroke="#FFE0B8" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="44 132"/>
+                <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(210,210,210,.14)" stroke-width="1.5"/>
+                <circle cx="32" cy="32" r="28" fill="none" stroke="#E4E4E7" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="44 132"/>
               </svg>
               <p class="thinking-text">GENERATING</p>
             </div>
@@ -73,19 +73,19 @@
           </div>
         </div>
 
-        <!-- панель управления под областью QR: пресеты + ввод -->
-        <section class="console card" aria-label="Генератор">
+        <!-- Панель управления: пресет + ввод + действия -->
+        <section class="console card" aria-label="Управление">
           <div class="presets-wrap">
-            <div id="presets" class="presets" role="tablist" aria-label="Пресеты ссылок"></div>
-            <button id="btn-add-preset" class="pill pill-add" title="Добавить пресет">
+            <div id="presets" class="presets" role="tablist" aria-label="Список шаблонов"></div>
+            <button id="btn-add-preset" class="pill pill-add" title="Добавить шаблон">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
 
           <div class="input-card">
-            <span id="prefix" class="input-prefix" title="Нажмите чтобы изменить шаблон">https://wsh.bike?s=</span>
-            <input id="suffix" class="input-suffix" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
-                   placeholder="номер" aria-label="Значение после =">
+            <span id="prefix" class="input-prefix" title="Нажмите, чтобы изменить ссылку до =">https://wsh.bike?s=</span>
+            <input id="suffix" class="input-suffix" type="text" inputmode="text" autocomplete="off" spellcheck="false"
+                   placeholder="номер" aria-label="Часть после =">
           </div>
 
           <div class="actions">
@@ -97,11 +97,11 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
             </button>
           </div>
-          <div class="hint">Допишите номер и нажмите <kbd>Enter</kbd></div>
+          <div class="hint">Пиши номер после префикса и жми <kbd>Enter</kbd></div>
         </section>
       </section>
 
-      <!-- ===== ПРАВО: ИСТОРИЯ ===== -->
+      <!-- ==== HISTORY ==== -->
       <aside class="history card" aria-label="История">
         <div class="history-head">
           <h2 class="history-title">История</h2>
@@ -113,13 +113,13 @@
     </main>
   </div>
 
-  <!-- Модалка пресета (открывается только по кнопке «+» или правкой шаблона) -->
+  <!-- Модалка добавления/редактирования шаблона (открывается только по кнопке + или клику по префиксу) -->
   <div id="preset-modal" class="modal-overlay" hidden>
     <div class="modal card">
-      <h3 class="modal-title">Новый пресет</h3>
+      <h3 class="modal-title">Новый шаблон</h3>
       <label class="mini-label" for="mp-name">Название</label>
       <input id="mp-name" class="modal-input" type="text" placeholder="Whoosh" maxlength="18">
-      <label class="mini-label" for="mp-url">Шаблон ссылки (заканчивается на = )</label>
+      <label class="mini-label" for="mp-url">Базовая ссылка (заканчивается на = )</label>
       <input id="mp-url" class="modal-input mono" type="text" placeholder="https://wsh.bike?s=">
       <div class="modal-actions">
         <button id="mp-cancel" class="ghost-btn">Отмена</button>
