@@ -107,7 +107,7 @@ function toast(msg){
       const alpha = d.a * (0.6 + 0.4*Math.sin(t/1000*d.ts + d.tw));
       ctx.beginPath();
       ctx.arc(d.x,d.y,d.r,0,Math.PI*2);
-      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      ctx.fillStyle = `rgba(232,214,180,${alpha.toFixed(3)})`;
       ctx.fill();
     }
     raf = requestAnimationFrame(step);
@@ -120,6 +120,88 @@ function toast(msg){
     else if (!running){ running=true; raf=requestAnimationFrame(step); }
   });
 })();
+
+/* ---------- Custom dot-style QR renderer ----------
+   Белые круглые точки на графитовой тёплой подложке. */
+const QR_COLORS = {
+  plateTop:'#201C15', plateBot:'#17150F',
+  dot:'#E9E5DC', eyeOuter:'#E9E5DC', eyeInner:'#EFD9A8' /* янтарные finder-глазки */
+};
+function renderDots(qr, size){
+  const c = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  c.width = c.height = size*dpr;
+  c.style.width = c.style.height = '100%';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  const n = qr.modules.size, data = qr.modules.data;
+  const qz = 3;                       // quiet zone (в модулях) — обязательная рамка
+  const total = n + qz*2;
+  const cell = size/total;
+  const pad = cell*1.2;               // внутренний отступ плашки
+
+  // графитовая плашка со скруглением и лёгким вертикальным градиентом
+  const g = ctx.createLinearGradient(0,0,0,size);
+  g.addColorStop(0,QR_COLORS.plateTop); g.addColorStop(1,QR_COLORS.plateBot);
+  ctx.fillStyle = g;
+  roundRect(ctx, 0, 0, size, size, cell*2.2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(233,229,220,.08)'; ctx.lineWidth = 1;
+  roundRect(ctx, .5, .5, size-1, size-1, cell*2.2);
+  ctx.stroke();
+
+  // позиции finder-паттернов (7x7 в углах)
+  const isFinder = (col,row)=>
+    (col<7&&row<7)||(col>=n-7&&row<7)||(col<7&&row>=n-7);
+
+  // мягкое свечение под глазками
+  ctx.save();
+  ctx.shadowColor = 'rgba(239,217,168,.35)'; ctx.shadowBlur = cell*1.6;
+
+  for(let row=0;row<n;row++){
+    for(let col=0;col<n;col++){
+      if(!data[row*n+col]) continue;
+      const x=(col+qz)*cell, y=(row+qz)*cell;
+      if(isFinder(col,row)){
+        // finder рисуем целиком один раз по левому верхнему модулю блока
+        const inTopL=(col===0&&row===0), inTopR=(col===n-7&&row===0), inBotL=(col===0&&row===n-7);
+        if(inTopL||inTopR||inBotL){
+          drawEye(ctx, x, y, cell);
+        }
+        continue;
+      }
+      ctx.fillStyle = QR_COLORS.dot;
+      ctx.beginPath();
+      ctx.arc(x+cell/2, y+cell/2, cell*0.42, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  return c;
+}
+function drawEye(ctx,x,y,cell){
+  const S=cell*7;
+  // внешнее кольцо — скруглённый квадрат обводкой
+  ctx.strokeStyle = QR_COLORS.eyeOuter;
+  ctx.lineWidth = cell*1.05;
+  roundRect(ctx, x+ctx.lineWidth/2, y+ctx.lineWidth/2, S-ctx.lineWidth, S-ctx.lineWidth, cell*1.9);
+  ctx.stroke();
+  // зрачок
+  ctx.fillStyle = QR_COLORS.eyeInner;
+  roundRect(ctx, x+cell*2.15, y+cell*2.15, cell*2.7, cell*2.7, cell*.9);
+  ctx.fill();
+}
+function roundRect(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
 
 /* ---------- Presets UI ---------- */
 function renderPresets(){
@@ -221,11 +303,8 @@ async function generate(){
   // build QR in background while orb plays
   let canvas=null, err=null;
   try{
-    canvas = await QRCode.toCanvas(document.createElement('canvas'), url, {
-      width: 640, margin: 2,
-      errorCorrectionLevel: 'M',
-      color:{ dark:'#000000', light:'#ffffff' }
-    });
+    const qr = QRCode.create(url, { errorCorrectionLevel: 'M' });
+    canvas = renderDots(qr, 640);
   }catch(e){ err=e; }
 
   await sleep(1000); // "thinking" beat
@@ -326,9 +405,11 @@ function restore(h){
   el.suffix.value = h.suf || '';
   current = { url:h.url, ts:h.ts, svc:SVC_BY_KEY[h.svc]||detectService(h.url), suf:h.suf, canvas:null };
   // regenerate silently (no fake delay) to get fresh canvas
-  QRCode.toCanvas(document.createElement('canvas'), h.url, {width:640,margin:2,errorCorrectionLevel:'M',color:{dark:'#000000',light:'#ffffff'}})
-    .then(cv=>{ current.canvas=cv; paintResult(current); showView('result'); el.copy.disabled=el.download.disabled=false; })
-    .catch(()=>toast('Не удалось восстановить'));
+  try{
+    const qr = QRCode.create(h.url, { errorCorrectionLevel: 'M' });
+    current.canvas = renderDots(qr, 640);
+    paintResult(current); showView('result'); el.copy.disabled=el.download.disabled=false;
+  }catch(e){ toast('Не удалось восстановить'); }
 }
 
 el.clearHist.addEventListener('click',()=>{
