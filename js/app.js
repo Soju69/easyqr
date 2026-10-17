@@ -13,11 +13,11 @@ const ICONS = {
   x:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`
 };
 
-/* ----------_known services → detection ---------- */
+/* ---------- Known services → detection ---------- */
 const SERVICES = [
   { key:'whoosh',   match:/whoosh|wsh\.bike/i,                    icon:'scooter', label:'WHOOSH · САМОКАТ' },
   { key:'yandex',   match:/yandex|\.go\b|taxi|vmnitime|\byd\b|\bmr\b|rt725|t\.\d+\.ru/i, icon:'car', label:'ЯНДЕКС · ТАКСИ' },
-  { key:'utube',    match:/utube|u-tok|msk911|scooter-?sharing|whoos[\d.]*tube/i, icon:'scooter', label:'UTUBE · САМОКАТ' },
+  { key:'utube',    match:/utube|u-tok|msk911|scooter-?sharing/i, icon:'scooter', label:'UTUBE · САМОКАТ' },
   { key:'mtsbike',  match:/mobik|\bmts\b|moyka|moika|velobike|vkm\b/i, icon:'bike', label:'МТС · ВЕЛО/КИК' },
   { key:'carshare', match:/youdrive|anytime|belka|dellin|carsharing|drive\d/i, icon:'car', label:'КАРШЕРИНГ' },
 ];
@@ -48,7 +48,7 @@ if (activePreset >= presets.length) activePreset = 0;
 /* ---------- Elements ---------- */
 const el = {
   presets:$('#presets'), addPreset:$('#btn-add-preset'),
-  prefixLabel:$('#prefix-label'), prefix:$('#prefix'), suffix:$('#suffix'),
+  prefix:$('#prefix'), suffix:$('#suffix'),
   generate:$('#btn-generate'), copy:$('#btn-copy'), download:$('#btn-download'),
   beamShell:$('#beam-shell'), stage:$('#stage'),
   vEmpty:$('#view-empty'), vThink:$('#view-thinking'), vResult:$('#view-result'),
@@ -57,10 +57,10 @@ const el = {
   histList:$('#history-list'), histEmpty:$('#history-empty'), clearHist:$('#btn-clear-history'),
   modal:$('#preset-modal'), mpName:$('#mp-name'), mpUrl:$('#mp-url'),
   mpSave:$('#mp-save'), mpCancel:$('#mp-cancel'),
-  toast:$('#toast'), installBtn:$('#btn-install')
+  toast:$('#toast'), installBtn:$('#btn-install'), dotsBg:$('#dots-bg')
 };
 
-let current = null; // {url, svg(canvas), ts, service}
+let current = null; // {url, canvas, ts, svc, suf}
 let generating = false;
 
 /* ---------- Toast ---------- */
@@ -71,6 +71,55 @@ function toast(msg){
   clearTimeout(toastT);
   toastT = setTimeout(()=>el.toast.classList.remove('show'), 1600);
 }
+
+/* ---------- Dot orbs background (canvas) ---------- */
+(function dotsBackground(){
+  const cv = el.dotsBg;
+  if (!cv || !cv.getContext) return;
+  const ctx = cv.getContext('2d');
+  let w=0,h=0,dpr=1,dots=[],raf=null,running=true;
+
+  function resize(){
+    const r = cv.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio||1, 2);
+    w = Math.max(1, r.width); h = Math.max(1, r.height);
+    cv.width = w*dpr; cv.height = h*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const n = Math.round(Math.min(46, Math.max(18, (w*h)/14000)));
+    dots = Array.from({length:n},()=>makeDot());
+  }
+  function makeDot(){
+    return {
+      x:Math.random()*w, y:Math.random()*h,
+      r:.7+Math.random()*2.1,
+      vx:(Math.random()-.5)*.14, vy:(Math.random()-.5)*.14,
+      a:.05+Math.random()*.16,
+      tw:Math.random()*Math.PI*2, ts:.4+Math.random()*1.2
+    };
+  }
+  function step(t){
+    if (!running) return;
+    ctx.clearRect(0,0,w,h);
+    for (const d of dots){
+      d.x+=d.vx; d.y+=d.vy;
+      if (d.x<-4) d.x=w+4; if (d.x>w+4) d.x=-4;
+      if (d.y<-4) d.y=h+4; if (d.y>h+4) d.y=-4;
+      const alpha = d.a * (0.6 + 0.4*Math.sin(t/1000*d.ts + d.tw));
+      ctx.beginPath();
+      ctx.arc(d.x,d.y,d.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      ctx.fill();
+    }
+    raf = requestAnimationFrame(step);
+  }
+  resize();
+  raf = requestAnimationFrame(step);
+  window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange',()=>{
+    if (document.hidden){ running=false; cancelAnimationFrame(raf); }
+    else if (!running){ running=true; raf=requestAnimationFrame(step); }
+  });
+})();
 
 /* ---------- Presets UI ---------- */
 function renderPresets(){
@@ -102,50 +151,59 @@ function applyPreset(){
   renderPresets();
   const p = presets[activePreset];
   el.prefix.textContent = p.url;
-  el.prefixLabel.textContent = p.name;
   el.suffix.focus({preventScroll:true});
 }
 
-/* ---------- Modal ---------- */
-el.addPreset.addEventListener('click',()=>{
-  el.mpName.value=''; el.mpUrl.value='';
-  el.modal.hidden=false; el.mpName.focus();
-});
-el.mpCancel.addEventListener('click',()=>el.modal.hidden=true);
-el.modal.addEventListener('click',(e)=>{ if(e.target===el.modal) el.modal.hidden=true; });
+/* ---------- Modal (только по кнопке «+» или клику по шаблону) ---------- */
+function openModal(prefill){
+  el.mpName.value = prefill ? prefill.name : '';
+  el.mpUrl.value  = prefill ? prefill.url  : '';
+  el.modal.hidden = false;
+  (prefill ? el.mpUrl : el.mpName).focus();
+}
+function closeModal(){ el.modal.hidden = true; }
+
+el.addPreset.addEventListener('click',()=>openModal(null));
+el.mpCancel.addEventListener('click',closeModal);
+el.modal.addEventListener('click',(e)=>{ if(e.target===el.modal) closeModal(); });
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && !el.modal.hidden) closeModal(); });
+
 el.mpSave.addEventListener('click',savePreset);
 el.mpUrl.addEventListener('keydown',(e)=>{ if(e.key==='Enter') savePreset(); });
+el.mpName.addEventListener('keydown',(e)=>{ if(e.key==='Enter') el.mpUrl.focus(); });
+
+function normalizeUrl(url){
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  if (!url.endsWith('=') && !url.endsWith('?')) url += '=';
+  return url;
+}
 function savePreset(){
   let name = el.mpName.value.trim();
   let url  = el.mpUrl.value.trim();
   if (!name || !url){ toast('Заполните оба поля'); return; }
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  if (!url.endsWith('=') && !url.endsWith('?')) url += '=';
+  url = normalizeUrl(url);
   presets.push({name,url});
   activePreset = presets.length-1;
   LS.set('presets',presets); LS.set('activePreset',activePreset);
-  el.modal.hidden = true;
+  closeModal();
   applyPreset();
   toast('Пресет добавлен');
 }
 
-/* Tap on prefix → edit preset url inline via modal prefilled */
+/* Клик по серой части ссылки → редактирование текущего пресета */
 el.prefix.addEventListener('click',()=>{
   const p = presets[activePreset];
-  el.mpName.value = p.name; el.mpUrl.value = p.url;
-  el.modal.hidden = false; el.mpUrl.focus();
-  // save overwrites current preset
+  openModal({name:p.name, url:p.url});
   el.mpSave.onclick = ()=>{
     let name = el.mpName.value.trim(), url = el.mpUrl.value.trim();
     if(!name||!url){toast('Заполните оба поля');return;}
-    if(!/^https?:\/\//i.test(url)) url='https://'+url;
+    url = normalizeUrl(url);
     presets[activePreset]={name,url};
     LS.set('presets',presets);
-    el.modal.hidden=true; applyPreset(); toast('Пресет обновлён');
+    closeModal(); applyPreset(); toast('Пресет обновлён');
     el.mpSave.onclick = savePreset;
   };
 });
-el.mpSave.onclick = savePreset;
 
 /* ---------- Generate ---------- */
 async function generate(){
@@ -238,6 +296,7 @@ function renderHistory(){
     const svc = SVC_BY_KEY[h.svc] || detectService(h.url||'');
     const b=document.createElement('button');
     b.className='h-item';
+    b.style.animationDelay = Math.min(i*30,300)+'ms';
     b.innerHTML = `
       <span class="h-icon">${ICONS[svc.icon]}</span>
       <span class="h-body">
