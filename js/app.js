@@ -1,4 +1,4 @@
-/* ============ EasyQR app logic ============ */
+/* ========== EasyQR app logic ========== */
 (() => {
 'use strict';
 
@@ -15,10 +15,10 @@ const ICONS = {
 
 /* ---------- Known services → detection ---------- */
 const SERVICES = [
-  { key:'whoosh',   match:/whoosh|wsh\.bike/i,                    icon:'scooter', label:'WHOOSH · САМОКАТ' },
-  { key:'yandex',   match:/yandex|\.go\b|taxi|vmnitime|\byd\b|\bmr\b|rt725|t\.\d+\.ru/i, icon:'car', label:'ЯНДЕКС · ТАКСИ' },
-  { key:'utube',    match:/utube|u-tok|msk911|scooter-?sharing/i, icon:'scooter', label:'UTUBE · САМОКАТ' },
-  { key:'mtsbike',  match:/mobik|\bmts\b|moyka|moika|velobike|vkm\b/i, icon:'bike', label:'МТС · ВЕЛО/КИК' },
+  { key:'whoosh',   match:/whoosh|wsh\.bike/i,                 icon:'scooter', label:'WHOOSH · САМОКАТ' },
+  { key:'yandex',   match:/yandex|\.go\b|taxi|vnitimeli|byd|\bmr\b|rt725|t\.\d+\.ru/i, icon:'car', label:'ЯНДЕКС · КАРШЕРИНГ' },
+  { key:'utube',    match:/utube|u-tok|msk911|scooter?sharing/i, icon:'scooter', label:'UTUBE · САМОКАТ' },
+  { key:'mtsbike',  match:/mobik|\bmts\b|myka|velobik|vkm\b/i, icon:'bike', label:'МС · ВЕЛО/КИК' },
   { key:'carshare', match:/youdrive|anytime|belka|dellin|carsharing|drive\d/i, icon:'car', label:'КАРШЕРИНГ' },
 ];
 
@@ -107,7 +107,7 @@ function toast(msg){
       const alpha = d.a * (0.6 + 0.4*Math.sin(t/1000*d.ts + d.tw));
       ctx.beginPath();
       ctx.arc(d.x,d.y,d.r,0,Math.PI*2);
-      ctx.fillStyle = `rgba(232,214,180,${alpha.toFixed(3)})`;
+      ctx.fillStyle = `rgba(214,214,218,${alpha.toFixed(3)})`;
       ctx.fill();
     }
     raf = requestAnimationFrame(step);
@@ -121,11 +121,10 @@ function toast(msg){
   });
 })();
 
-/* ---------- Custom dot-style QR renderer ----------
-   Белые круглые точки на графитовой тёплой подложке. */
+/* ---------- Custom dot-style QR renderer (монохром) ---------- */
 const QR_COLORS = {
-  plateTop:'#201C15', plateBot:'#17150F',
-  dot:'#E9E5DC', eyeOuter:'#E9E5DC', eyeInner:'#EFD9A8' /* янтарные finder-глазки */
+  plateTop:'#1C1C1F', plateBot:'#141416',
+  dot:'#E4E4E7', eyeOuter:'#E4E4E7', eyeInner:'#C9C9CE'
 };
 function renderDots(qr, size){
   const c = document.createElement('canvas');
@@ -136,37 +135,33 @@ function renderDots(qr, size){
   ctx.scale(dpr,dpr);
 
   const n = qr.modules.size, data = qr.modules.data;
-  const qz = 3;                       // quiet zone (в модулях) — обязательная рамка
+  const qz = 3;
   const total = n + qz*2;
   const cell = size/total;
-  const pad = cell*1.2;               // внутренний отступ плашки
+  const pad = cell*1.2;
 
-  // графитовая плашка со скруглением и лёгким вертикальным градиентом
   const g = ctx.createLinearGradient(0,0,0,size);
   g.addColorStop(0,QR_COLORS.plateTop); g.addColorStop(1,QR_COLORS.plateBot);
   ctx.fillStyle = g;
   roundRect(ctx, 0, 0, size, size, cell*2.2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(233,229,220,.08)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(228,228,231,.08)'; ctx.lineWidth = 1;
   roundRect(ctx, .5, .5, size-1, size-1, cell*2.2);
   ctx.stroke();
 
-  // позиции finder-паттернов (7x7 в углах)
   const isFinder = (col,row)=>
     (col<7&&row<7)||(col>=n-7&&row<7)||(col<7&&row>=n-7);
 
-  // мягкое свечение под глазками
   ctx.save();
-  ctx.shadowColor = 'rgba(239,217,168,.35)'; ctx.shadowBlur = cell*1.6;
+  ctx.shadowColor = 'rgba(230,230,232,.3)'; ctx.shadowBlur = cell*1.6;
 
   for(let row=0;row<n;row++){
     for(let col=0;col<n;col++){
       if(!data[row*n+col]) continue;
       const x=(col+qz)*cell, y=(row+qz)*cell;
       if(isFinder(col,row)){
-        // finder рисуем целиком один раз по левому верхнему модулю блока
-        const inTopL=(col===0&&row===0), inTopR=(col===n-7&&row===0), inBotL=(col===0&&row===n-7);
-        if(inTopL||inTopR||inBotL){
+        const inTL=(col===0&&row===0), inTR=(col===n-7&&row===0), inBL=(col===0&&row===n-7);
+        if(inTL||inTR||inBL){
           drawEye(ctx, x, y, cell);
         }
         continue;
@@ -182,12 +177,10 @@ function renderDots(qr, size){
 }
 function drawEye(ctx,x,y,cell){
   const S=cell*7;
-  // внешнее кольцо — скруглённый квадрат обводкой
   ctx.strokeStyle = QR_COLORS.eyeOuter;
   ctx.lineWidth = cell*1.05;
   roundRect(ctx, x+ctx.lineWidth/2, y+ctx.lineWidth/2, S-ctx.lineWidth, S-ctx.lineWidth, cell*1.9);
   ctx.stroke();
-  // зрачок
   ctx.fillStyle = QR_COLORS.eyeInner;
   roundRect(ctx, x+cell*2.15, y+cell*2.15, cell*2.7, cell*2.7, cell*.9);
   ctx.fill();
@@ -211,7 +204,7 @@ function renderPresets(){
     b.className = 'pill' + (i===activePreset?' active':'');
     b.setAttribute('role','tab');
     const svc = detectService(p.url);
-    b.innerHTML = `<span class="pill-icon">${ICONS[svc.icon]}</span><span>${escapeHtml(p.name)}</span><span class="pill-del" data-del="${i}" title="Удалить пресет">${ICONS.x}</span>`;
+    b.innerHTML = `<span class="pill-icon">${ICONS[svc.icon]}</span><span>${escapeHtml(p.name)}</span><span class="pill-del" data-del="${i}" title="Удалить шаблон">${ICONS.x}</span>`;
     b.addEventListener('click',(e)=>{
       if (e.target.closest('.pill-del')) return;
       activePreset = i; LS.set('activePreset', i);
@@ -219,7 +212,7 @@ function renderPresets(){
     });
     b.querySelector('.pill-del').addEventListener('click',(e)=>{
       e.stopPropagation();
-      if (presets.length<=1){ toast('Нужен хотя бы один пресет'); return; }
+      if (presets.length<=1){ toast('Нельзя удалить единственный шаблон'); return; }
       presets.splice(i,1);
       if (activePreset>=presets.length) activePreset=presets.length-1;
       LS.set('presets',presets); LS.set('activePreset',activePreset);
@@ -236,7 +229,7 @@ function applyPreset(){
   el.suffix.focus({preventScroll:true});
 }
 
-/* ---------- Modal (только по кнопке «+» или клику по шаблону) ---------- */
+/* ---------- Modal ---------- */
 function openModal(prefill){
   el.mpName.value = prefill ? prefill.name : '';
   el.mpUrl.value  = prefill ? prefill.url  : '';
@@ -262,45 +255,43 @@ function normalizeUrl(url){
 function savePreset(){
   let name = el.mpName.value.trim();
   let url  = el.mpUrl.value.trim();
-  if (!name || !url){ toast('Заполните оба поля'); return; }
+  if (!name || !url){ toast('Заполни оба поля'); return; }
   url = normalizeUrl(url);
   presets.push({name,url});
   activePreset = presets.length-1;
   LS.set('presets',presets); LS.set('activePreset',activePreset);
   closeModal();
   applyPreset();
-  toast('Пресет добавлен');
+  toast('Шаблон добавлен');
 }
 
-/* Клик по серой части ссылки → редактирование текущего пресета */
 el.prefix.addEventListener('click',()=>{
   const p = presets[activePreset];
   openModal({name:p.name, url:p.url});
   el.mpSave.onclick = ()=>{
     let name = el.mpName.value.trim(), url = el.mpUrl.value.trim();
-    if(!name||!url){toast('Заполните оба поля');return;}
+    if(!name||!url){toast('Заполни оба поля');return;}
     url = normalizeUrl(url);
     presets[activePreset]={name,url};
     LS.set('presets',presets);
-    closeModal(); applyPreset(); toast('Пресет обновлён');
+    closeModal(); applyPreset(); toast('Шаблон обновлён');
     el.mpSave.onclick = savePreset;
   };
 });
 
-/* ---------- Generate ---------- */
+ /* ---------- Generate ---------- */
 async function generate(){
   if (generating) return;
   const suf = el.suffix.value.trim();
   const base = presets[activePreset].url;
   const url = base + suf;
-  if (!suf){ toast('Введите номер'); shake(el.suffix.closest('.input-card')); return; }
+  if (!suf){ toast('Введи номер'); shake(el.suffix.closest('.input-card')); return; }
 
   generating = true;
   el.copy.disabled = el.download.disabled = true;
   el.beamShell.classList.add('generating');
   showView('think');
 
-  // build QR in background while orb plays
   let canvas=null, err=null;
   try{
     const qr = QRCode.create(url, { errorCorrectionLevel: 'M' });
@@ -309,7 +300,7 @@ async function generate(){
 
   await sleep(1000); // "thinking" beat
 
-  if (err){ showView(current?'result':'empty'); toast('Ошибка генерации'); generating=false; return; }
+  if (err){ showView(current?'result':'empty'); toast('Не удалось создать QR'); generating=false; return; }
 
   const svc = detectService(url);
   const ts = Date.now();
@@ -372,7 +363,7 @@ function renderHistory(){
   el.histList.innerHTML='';
   el.histEmpty.style.display = history.length? 'none':'block';
   history.forEach((h,i)=>{
-    const svc = SVC_BY_KEY[h.svc] || detectService(h.url||'');
+    const svc = SVC_BY_KEY[h.svc]||detectService(h.url||'');
     const b=document.createElement('button');
     b.className='h-item';
     b.style.animationDelay = Math.min(i*30,300)+'ms';
@@ -390,7 +381,6 @@ function renderHistory(){
 }
 
 function restore(h){
-  // find or create matching preset by prefix
   const idx = h.url.lastIndexOf('=');
   const base = idx>=0 ? h.url.slice(0,idx+1) : h.url;
   let pi = presets.findIndex(p=>p.url===base);
@@ -404,12 +394,11 @@ function restore(h){
   applyPreset();
   el.suffix.value = h.suf || '';
   current = { url:h.url, ts:h.ts, svc:SVC_BY_KEY[h.svc]||detectService(h.url), suf:h.suf, canvas:null };
-  // regenerate silently (no fake delay) to get fresh canvas
   try{
     const qr = QRCode.create(h.url, { errorCorrectionLevel: 'M' });
     current.canvas = renderDots(qr, 640);
     paintResult(current); showView('result'); el.copy.disabled=el.download.disabled=false;
-  }catch(e){ toast('Не удалось восстановить'); }
+  }catch(e){ toast('Не удалось перерисовать код'); }
 }
 
 el.clearHist.addEventListener('click',()=>{
@@ -434,7 +423,7 @@ el.download.addEventListener('click',()=>{
 });
 
 /* ---------- Input events ---------- */
-el.suffix.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); generate(); }});
+el.suffix.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); generate(); } });
 el.generate.addEventListener('click',generate);
 
 /* ---------- Utils ---------- */
@@ -458,7 +447,6 @@ el.installBtn.addEventListener('click',async()=>{
 });
 window.addEventListener('appinstalled',()=>{ el.installBtn.hidden=true; });
 
-/* ---------- Init ---------- */
 applyPreset();
 renderHistory();
 })();
